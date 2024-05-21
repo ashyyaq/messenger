@@ -1,0 +1,114 @@
+#define WIN32_LEAN_AND_MEAN
+
+#include <iostream>
+#include <Windows.h>
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+
+using namespace std;
+
+int main() {
+    WSADATA wsaData;
+    ADDRINFO hints;
+    ADDRINFO* addrResult; // Структура с информацией об адресе
+    SOCKET ConnectSocket = INVALID_SOCKET; // Для прослушивания входящих подключений
+    char recvBuffer[512]; // Буфер для приема данных от клиента
+
+    const char* sendBuffer1 = "Hello from client 1"; // Первое сообщение 
+    const char* sendBuffer2 = "Hello from client 2"; // Второе сообщение 
+
+    // Инициализация сокетов
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (result != 0) {
+        cout << "WSAStartup failed with result: " << result << endl;
+        return 1;
+    }
+
+    ZeroMemory(&hints, sizeof(hints));  // Обнуление буфера для отправки сообщений
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP; // Протокол TCP
+
+    // Получение информации об адресе сервера
+    result = getaddrinfo("localhost", "666", &hints, &addrResult); // Запрос адреса c портом 666
+    if (result != 0) {
+        cout << "getaddrinfo failed with error: " << result << endl;
+        freeaddrinfo(addrResult); // Освобождение ресурсов 
+        WSACleanup(); // Очистка сокетов видоус
+        return 1;
+    }
+
+    // Создание сокета для подключения
+    ConnectSocket = socket(addrResult->ai_family, addrResult->ai_socktype, addrResult->ai_protocol);
+    if (ConnectSocket == INVALID_SOCKET) {
+        cout << "Socket creation failed" << endl;
+        freeaddrinfo(addrResult); // Освобождение ресурсов 
+        WSACleanup(); // Очистка сокетов видоус
+        return 1;
+    }
+
+    // Подключение к серверу
+    result = connect(ConnectSocket, addrResult->ai_addr, (int)addrResult->ai_addrlen);
+    if (result == SOCKET_ERROR) {
+        cout << "Unable to connect to server" << endl;
+        closesocket(ConnectSocket); // Закрытие сокета
+        ConnectSocket = INVALID_SOCKET;
+        freeaddrinfo(addrResult); // Освобождение ресурсов 
+        WSACleanup(); // Очистка сокетов видоус
+        return 1;
+    }
+
+    // Отправка первого сообщения на сервер
+    result = send(ConnectSocket, sendBuffer1, (int)strlen(sendBuffer1), 0);
+    if (result == SOCKET_ERROR) {
+        cout << "Send failed, error: " << result << endl;
+        closesocket(ConnectSocket); // Закрытие сокета
+        freeaddrinfo(addrResult); // Освобождение ресурсов 
+        WSACleanup(); // Очистка сокетов видоус
+        return 1;
+    }
+    cout << "Sent: " << result << " bytes" << endl;
+
+    result = send(ConnectSocket, sendBuffer2, (int)strlen(sendBuffer2), 0);
+    if (result == SOCKET_ERROR) {
+        cout << "Send failed, error: " << result << endl;
+        closesocket(ConnectSocket); // Закрытие сокета
+        freeaddrinfo(addrResult); // Освобождение ресурсов 
+        WSACleanup(); // Очистка сокетов видоус
+        return 1;
+    }
+    cout << "Sent: " << result << " bytes" << endl; // Отправлено -- байтов
+
+    // Закрытие сокета для отправки данных
+    result = shutdown(ConnectSocket, SD_SEND);
+    if (result == SOCKET_ERROR) {
+        cout << "Shutdown failed, error: " << result << endl;
+        closesocket(ConnectSocket); // Закрытие сокета
+        freeaddrinfo(addrResult); // Освобождение ресурсов 
+        WSACleanup(); // Очистка сокетов видоус
+        return 1;
+    }
+
+    // Цикл получения ответов от сервера
+    do {
+        ZeroMemory(recvBuffer, 512); // Обнуление буфера для приема
+
+        // Получение данных от сервера.
+        result = recv(ConnectSocket, recvBuffer, 512, 0);
+        if (result > 0) {
+            cout << "Received " << result << " bytes" << endl;
+            cout << "Received data: " << recvBuffer << endl;
+        }
+        else if (result == 0) {
+            cout << "Connection closed" << endl; // Сервер отключился
+        }
+        else {
+            cout << "Recv failed, error: " << WSAGetLastError() << endl;
+        }
+    } while (result > 0); // Цикл продолжается, если получаются данные
+
+    closesocket(ConnectSocket); // Закрытие сокета
+    freeaddrinfo(addrResult); // Освобождение ресурсов 
+    WSACleanup(); // Очистка сокетов видоус
+    return 0; // Выход из программы 
+}
